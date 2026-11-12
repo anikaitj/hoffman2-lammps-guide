@@ -1,0 +1,50 @@
+# =====================================================================
+# Uniaxial tensile test of single-crystal Cu along [100] at constant
+# strain rate; prints the stress-strain curve.
+# NTRG lab recipe. metal units. Needs: Cu_u3.eam
+# Run:    mpirun -n 8 lmp -in in.cu_tensile -log log.lammps
+# Quick:  -var nx 6 -var neq 2000 -var strain 0.05
+# Output: stress_strain.dat (strain, stress in GPa)
+# =====================================================================
+variable        nx     index 10              # cells per side (10 -> 4000 atoms)
+variable        T      index 300
+variable        rate   index 1.0e9           # engineering strain rate, 1/s
+variable        strain index 0.25            # final strain
+variable        neq    index 20000
+
+units           metal
+atom_style      atomic
+boundary        p p p
+lattice         fcc 3.615 orient x 1 0 0 orient y 0 1 0 orient z 0 0 1
+region          box block 0 ${nx} 0 ${nx} 0 ${nx}
+create_box      1 box
+create_atoms    1 box
+pair_style      eam
+pair_coeff      * * Cu_u3.eam
+neighbor        2.0 bin
+timestep        0.001
+
+velocity        all create ${T} 87287 mom yes rot yes dist gaussian
+fix             eq all npt temp ${T} ${T} 0.1 iso 0 0 1.0
+thermo          1000
+run             ${neq}
+unfix           eq
+
+# --- pull along x; let y and z relax to zero stress ---
+variable        L0 equal lx
+variable        L0 equal ${L0}
+reset_timestep  0
+variable        erate equal ${rate}*1.0e-12          # per ps (metal time unit)
+fix             pull all deform 1 x erate ${erate} units box remap x
+fix             int all npt temp ${T} ${T} 0.1 y 0 0 1.0 z 0 0 1.0
+
+variable        eng   equal (lx-v_L0)/v_L0
+compute         p all pressure thermo_temp
+variable        sxx   equal -c_p[1]/10000           # bar -> GPa (tension positive)
+variable        syy   equal -c_p[2]/10000
+fix             out all print 200 "${eng} ${sxx}" file stress_strain.dat screen no title "# strain stress_xx(GPa)"
+thermo_style    custom step temp v_eng v_sxx v_syy pe
+thermo          1000
+variable        nsteps equal round(${strain}/${erate}/dt)
+run             ${nsteps}
+print           "=== DONE ==="

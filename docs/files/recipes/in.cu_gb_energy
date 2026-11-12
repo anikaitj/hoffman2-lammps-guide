@@ -1,0 +1,78 @@
+# =====================================================================
+# Grain-boundary energy of a Cu Sigma5 (310)[001] symmetric tilt boundary.
+# Two grains mirrored about the boundary plane. The box is periodic in all
+# directions, so it holds TWO boundaries:  E_GB = (E - N*E_bulk) / (2*A).
+# A GB's energy depends on how the grains are shifted against each other
+# and which crowded atoms are removed, so this scans in-plane shifts and
+# overlap cutoffs and keeps the lowest energy (standard practice).
+# NTRG lab recipe. metal units. Needs: Cu_u3.eam
+# Run:    lmp -in in.cu_gb_energy        (~1 minute on 1 core)
+# The same recipe works for other bicrystals whose two lattices fit one
+# periodic box. Shao et al.'s (111)/(569) pairs need a box sized for both.
+# =====================================================================
+variable        a equal 3.615
+units           metal
+atom_style      atomic
+boundary        p p p
+lattice         fcc ${a}
+region          b block 0 3 0 3 0 3
+create_box      1 b
+create_atoms    1 region b
+pair_style      eam
+pair_coeff      * * Cu_u3.eam
+minimize        1e-12 1e-12 1000 10000
+variable        Ecoh equal pe/atoms
+variable        Ecoh equal ${Ecoh}
+variable        Emin equal 1e9
+clear
+
+variable        sx index 0.0 0.25 0.5 0.75          # shift along x, fraction of a*sqrt(10)/2
+label           xloop
+variable        sz index 0.0 0.5                    # shift along z, fraction of a/2
+label           zloop
+variable        cut index 1.6 2.0 2.2               # overlap cutoff (A)
+label           cloop
+
+units           metal
+atom_style      atomic
+boundary        p p p
+variable        a equal 3.615
+variable        lx equal 2*${a}*sqrt(10)            # 2 repeats of [1 3 0]
+variable        ly equal 8*${a}*sqrt(10)            # both grains along [3 1 0]
+variable        lz equal 2*${a}                     # tilt axis [0 0 1]
+variable        hy equal ${ly}/2
+region          box block 0 ${lx} 0 ${ly} 0 ${lz} units box
+create_box      2 box
+lattice         fcc ${a} orient x 1 -3 0 orient y 3 1 0 orient z 0 0 1
+region          g1 block INF INF 0 ${hy} INF INF units box
+create_atoms    1 region g1
+lattice         fcc ${a} orient x 1 3 0 orient y -3 1 0 orient z 0 0 1
+region          g2 block INF INF ${hy} INF INF INF units box
+create_atoms    2 region g2
+mass            * 63.546
+pair_style      eam
+pair_coeff      * * Cu_u3.eam
+group           g1 type 1
+group           g2 type 2
+displace_atoms  g2 move $(v_sx*v_a*sqrt(10)/2) 0 $(v_sz*v_a/2) units box
+delete_atoms    overlap ${cut} g2 g1
+thermo          1000
+fix             relax all box/relax y 0.0 vmax 0.001
+minimize        1e-10 1e-10 10000 100000
+unfix           relax
+minimize        1e-10 1e-10 10000 100000
+variable        E equal (pe-atoms*${Ecoh})/(2*lx*lz)*16021.8    # mJ/m^2
+print           "GB_SCAN shift_x=${sx} shift_z=${sz} cutoff=${cut}  E_GB = $(v_E:%.1f) mJ/m^2" append gb_scan.txt
+if "$(v_E) < ${Emin}" then "variable Emin equal $(v_E)" "write_data data.gb_best"
+clear
+next            cut
+jump            SELF cloop
+variable        cut delete
+next            sz
+jump            SELF zloop
+variable        sz delete
+next            sx
+jump            SELF xloop
+
+print           "Lowest Sigma5 (310)[001] grain-boundary energy: $(v_Emin:%.1f) mJ/m^2 (all trials in gb_scan.txt)"
+print           "=== DONE ==="

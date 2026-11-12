@@ -1,0 +1,21 @@
+# Simulation outputs — keep these out of git
+*.lammpstrj
+log.lammps
+log.cite
+joblog.*
+core.*
+restart.*
+*.restart
+run_*.sh
+
+# Potentials are downloaded per-run (see docs/03-potentials.md)
+*.eam
+*.eam.alloy
+ffield.*
+data.*
+
+# OS junk
+.DS_Store
+
+# MkDocs build output
+site/

@@ -1,0 +1,67 @@
+# =====================================================================
+# Pressure-driven (Poiseuille) flow of an LJ fluid between two walls.
+# A body force on each fluid atom plays the role of a pressure gradient.
+# NTRG lab recipe. lj units.
+# Run:    mpirun -n 4 lmp -in in.poiseuille -log log.lammps
+# Quick:  -var neq 2000 -var nprod 4000
+# Output: vprofile.dat (velocity vx vs height y), should be a parabola
+# =====================================================================
+variable        neq   index 20000
+variable        nprod index 100000
+variable        force index 0.02            # body force per atom along x
+variable        T     index 1.0
+
+units           lj
+atom_style      atomic
+dimension       3
+boundary        p f p                        # walls bound the channel in y
+
+lattice         fcc 0.8442
+region          box block 0 12 -1 13 0 6
+create_box      3 box                        # 1 fluid, 2 lower wall, 3 upper wall
+mass            * 1.0
+
+region          lower block INF INF -1 0.5 INF INF
+region          upper block INF INF 11.5 13 INF INF
+region          fluid block INF INF 0.75 11.25 INF INF   # starts half a layer away from each wall (no shared planes)
+create_atoms    2 region lower
+create_atoms    3 region upper
+create_atoms    1 region fluid
+
+group           lower type 2
+group           upper type 3
+group           wall  union lower upper
+group           fluid type 1
+
+pair_style      lj/cut 2.5
+pair_coeff      * * 1.0 1.0 2.5
+neighbor        0.3 bin
+neigh_modify    every 1 delay 0 check yes exclude type 2 3 exclude type 2 2 exclude type 3 3
+
+velocity        fluid create ${T} 482748 mom yes rot yes dist gaussian
+fix             walls wall setforce 0.0 0.0 0.0     # walls are rigid and fixed
+velocity        wall set 0.0 0.0 0.0
+
+# thermostat only y and z velocity components, so the flow along x isn't damped away
+compute         tfl fluid temp/partial 0 1 1
+fix             int fluid nve
+fix             lang fluid langevin ${T} ${T} 1.0 699483
+fix_modify      lang temp tfl
+variable        vx equal vcm(fluid,x)
+thermo_style    custom step temp v_vx press
+thermo_modify   temp tfl
+timestep        0.003
+
+thermo          1000
+run             ${neq}
+
+# --- switch on the driving force and measure the steady profile ---
+fix             push fluid addforce ${force} 0.0 0.0
+run             ${neq}                       # let the flow develop
+reset_timestep  0
+compute         layers fluid chunk/atom bin/1d y lower 0.5 units lattice
+fix             prof fluid ave/chunk 100 $(v_nprod/100) ${nprod} layers vx density/number file vprofile.dat
+run             ${nprod}
+print           "Mean flow velocity: ${vx}"
+print           "Next: python3 fit_profile.py vprofile.dat --parabola --force ${force}   (prints eta)"
+print           "=== DONE ==="

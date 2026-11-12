@@ -1,0 +1,56 @@
+# =====================================================================
+# Lennard-Jones liquid: equilibrate, then measure RDF and diffusion
+# NTRG lab recipe. Reduced (lj) units: sigma = epsilon = mass = 1.
+# State point T* = 1.0, rho* = 0.8442 (a standard dense liquid).
+# Run:    mpirun -n 4 lmp -in in.lj_liquid -log log.lammps
+# Quick:  -var neq 2000 -var nprod 2000
+# Output: rdf.dat (g(r)), msd.dat (MSD vs time), log.lammps (D at the end)
+# =====================================================================
+variable        neq   index 20000          # equilibration steps
+variable        nprod index 50000          # production steps
+variable        T     index 1.0
+variable        rho   index 0.8442
+
+units           lj
+atom_style      atomic
+boundary        p p p
+
+lattice         fcc ${rho}
+region          box block 0 10 0 10 0 10
+create_box      1 box
+create_atoms    1 box                       # 4000 atoms
+mass            1 1.0
+
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+neighbor        0.3 bin
+neigh_modify    every 1 delay 0 check yes
+
+velocity        all create 3.0 87287 mom yes rot yes dist gaussian
+timestep        0.005
+
+# --- melt the lattice hot, then equilibrate at T with a thermostat ---
+fix             1 all nvt temp 3.0 ${T} 0.5
+run             ${neq}
+unfix           1
+
+# --- production: NVE (no thermostat disturbing the dynamics) ---
+reset_timestep  0
+fix             2 all nve
+
+compute         rdf all rdf 100
+fix             rdf all ave/time 100 $(v_nprod/100) ${nprod} c_rdf[*] file rdf.dat mode vector
+
+compute         msd all msd com yes
+variable        t equal step*dt
+fix             msd all ave/time 100 1 100 v_t c_msd[4] file msd.dat
+# Diffusion coefficient from the slope of MSD: D = slope/6 (3D)
+fix             vec all vector 100 c_msd[4]
+variable        D equal slope(f_vec)/6/(100*dt)
+
+thermo          1000
+thermo_style    custom step temp pe ke etotal press c_msd[4] v_D
+run             ${nprod}
+
+print           "Diffusion coefficient D* = ${D} (LJ units)"
+print           "=== DONE ==="

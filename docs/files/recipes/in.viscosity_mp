@@ -1,0 +1,49 @@
+# =====================================================================
+# Shear viscosity of an LJ liquid with the Muller-Plathe method
+# (fix viscosity swaps momentum between two slabs; LAMMPS measures the
+# resulting velocity gradient). NTRG lab recipe. lj units.
+# Run:    mpirun -n 4 lmp -in in.viscosity_mp -log log.lammps
+# Quick:  -var neq 2000 -var nprod 5000
+# Result: the log ends with the fit_profile.py command that prints eta = |flux / (dvx/dz)|
+# Reference: LAMMPS examples/VISCOSITY; for T*~1.0, rho*~0.84, eta* is ~2-3.
+# =====================================================================
+variable        neq   index 20000
+variable        nprod index 200000
+variable        T     index 1.0
+variable        rho   index 0.8442
+
+units           lj
+atom_style      atomic
+lattice         fcc ${rho}
+region          box block 0 8 0 8 0 20
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+pair_style      lj/cut 2.5
+pair_coeff      1 1 1.0 1.0 2.5
+neighbor        0.3 bin
+
+velocity        all create ${T} 87287 mom yes rot yes dist gaussian
+timestep        0.005
+fix             nvt all nvt temp ${T} ${T} 0.5
+thermo          1000
+run             ${neq}
+unfix           nvt
+
+reset_timestep  0
+fix             nve all nve
+fix             tstat all temp/rescale 100 ${T} ${T} 0.05 1.0   # mild: remove swap heating
+compute         layers all chunk/atom bin/1d z lower 0.05 units reduced
+fix             prof all ave/chunk 100 $(v_nprod/100) ${nprod} layers vx file vx_profile.dat
+fix             mp all viscosity 100 x z 20                     # swap px between z-slabs (defined after ave/chunk)
+
+# momentum flux Jz(px) = total swapped momentum / (2 * area * time)
+variable        area  equal lx*ly
+variable        flux  equal f_mp/(2*v_area*step*dt+1e-30)
+thermo_style    custom step temp etotal f_mp v_flux
+run             ${nprod}
+
+# velocity gradient from the linear part of the profile (lower half of the box)
+print           "Swapped momentum = $(f_mp), flux = ${flux}"
+print           "Next: python3 fit_profile.py vx_profile.dat --flux ${flux} --length $(lz)   (prints eta)"
+print           "=== DONE ==="

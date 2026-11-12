@@ -1,0 +1,96 @@
+# =====================================================================
+# Bead-spring polymer melt (Kremer-Grest model): linear chains with FENE
+# bonds and purely repulsive LJ beads. Built with a molecule template,
+# overlaps pushed apart with a soft potential, then equilibrated.
+# NTRG lab recipe. lj units. Packages: MOLECULE
+# Run:    mpirun -n 4 lmp -in in.polymer_melt -log log.lammps
+# Quick:  -var nchains 50 -var nsoft 2000 -var neq 5000
+# Output: Rg (radius of gyration) and end-to-end distance in log.lammps
+# =====================================================================
+variable        nchains index 200          # number of chains
+variable        nbeads  index 20           # beads per chain (change chain.mol to match)
+variable        rho     index 0.85         # bead number density
+variable        nsoft   index 20000
+variable        neq     index 200000
+variable        seed    index 58723
+
+units           lj
+atom_style      bond
+boundary        p p p
+
+variable        L equal (v_nchains*v_nbeads/v_rho)^(1.0/3.0)
+region          box block 0 ${L} 0 ${L} 0 ${L}
+create_box      1 box bond/types 1 extra/bond/per/atom 2 extra/special/per/atom 10
+mass            1 1.0
+
+# write a straight 20-bead chain template (bond length 0.97)
+print """# linear chain
+${nbeads} atoms
+$(v_nbeads-1) bonds
+
+Coords
+""" file chain.mol screen no
+variable        i loop ${nbeads}
+label           cloop
+print           "${i} $(0.97*(v_i-1)) 0.0 0.0" append chain.mol screen no
+next            i
+jump            SELF cloop
+print           "" append chain.mol screen no
+print           "Types" append chain.mol screen no
+print           "" append chain.mol screen no
+variable        i loop ${nbeads}
+label           tloop
+print           "${i} 1" append chain.mol screen no
+next            i
+jump            SELF tloop
+print           "" append chain.mol screen no
+print           "Bonds" append chain.mol screen no
+print           "" append chain.mol screen no
+variable        i loop $(v_nbeads-1)
+label           bloop
+print           "${i} 1 ${i} $(v_i+1)" append chain.mol screen no
+next            i
+jump            SELF bloop
+
+molecule        chain chain.mol
+create_atoms    0 random ${nchains} ${seed} NULL mol chain 3497   # overlaps allowed; the soft stage removes them
+
+bond_style      fene
+bond_coeff      1 30.0 1.5 1.0 1.0
+special_bonds   fene
+
+# --- stage 1: soft pair potential pushes overlapping chains apart ---
+pair_style      soft 1.12246
+pair_coeff      * * 0.0
+variable        prefactor equal ramp(0,60)
+fix             push all adapt 1 pair soft a * * v_prefactor
+velocity        all create 1.0 ${seed} mom yes rot yes dist gaussian
+fix             int all nve/limit 0.1
+fix             lang all langevin 1.0 1.0 1.0 ${seed}
+neighbor        0.4 bin
+neigh_modify    every 1 delay 0 check yes
+comm_modify     cutoff 2.0               # FENE bonds can stretch to 1.5 sigma
+timestep        0.005
+thermo          1000
+run             ${nsoft}
+unfix           push
+unfix           int
+
+# --- stage 2: real Kremer-Grest interactions (WCA = repulsive LJ) ---
+pair_style      lj/cut 1.12246
+pair_coeff      1 1 1.0 1.0 1.12246
+pair_modify     shift yes
+fix             int all nve
+timestep        0.01
+reset_timestep  0
+
+compute         mol all chunk/atom molecule
+compute         rg all gyration/chunk mol
+variable        rgavg equal ave(c_rg)
+thermo_style    custom step temp press pe ebond v_rgavg
+thermo          5000
+dump            d1 all custom 20000 traj.lammpstrj id mol type xu yu zu
+run             ${neq}
+
+print           "Mean radius of gyration: ${rgavg}"
+print           "=== DONE ==="

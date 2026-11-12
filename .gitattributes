@@ -1,0 +1,5 @@
+# Keep Unix line endings for anything that runs on Hoffman2 (Linux).
+# Windows editors can otherwise add CRLF, which breaks bash and LAMMPS scripts.
+* text=auto eol=lf
+*.png binary
+*.zip binary

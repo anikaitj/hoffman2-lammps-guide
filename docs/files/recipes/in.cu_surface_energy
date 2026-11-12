@@ -1,0 +1,60 @@
+# =====================================================================
+# Surface energies of Cu (111), (100), (110) with an EAM potential.
+# gamma = (E_slab - N*E_bulk) / (2*A), at 0 K after minimization.
+# Shows why thin films prefer (111): it comes out lowest.
+# NTRG lab recipe. metal units. Needs: Cu_u3.eam (or change pair_*)
+# Run:    lmp -in in.cu_surface_energy        (seconds; 1 core is fine)
+# Note:   box sizes are in Angstrom ("units box") and set to whole crystal
+#         repeats for each orientation. With rotated lattices, "units
+#         lattice" gives boxes that don't fit the crystal (wrong answers).
+# =====================================================================
+variable        a equal 3.615
+units           metal
+atom_style      atomic
+
+# --- bulk energy per atom ---
+boundary        p p p
+lattice         fcc ${a}
+region          b block 0 4 0 4 0 4
+create_box      1 b
+create_atoms    1 region b
+pair_style      eam
+pair_coeff      * * Cu_u3.eam
+minimize        1e-12 1e-12 1000 10000
+variable        Ecoh equal pe/atoms
+variable        Ecoh equal ${Ecoh}
+print           "Bulk energy per atom: ${Ecoh} eV"
+clear
+
+# --- one slab per orientation: periodic in x,y, vacuum along z ---
+# repeat lengths (x, y, z) of each orientation, in units of a:
+#   (100): 1, 1, 1      (110): 1, sqrt2, sqrt2      (111): sqrt2, sqrt6, sqrt3
+variable        hkl index 111 100 110
+label           loop
+units           metal
+atom_style      atomic
+boundary        p p f
+variable        a equal 3.615
+if "${hkl} == 100" then "lattice fcc ${a} orient x 1 0 0 orient y 0 1 0 orient z 0 0 1" &
+   "variable px equal ${a}" "variable py equal ${a}" "variable pz equal ${a}"
+if "${hkl} == 110" then "lattice fcc ${a} orient x 0 0 1 orient y 1 -1 0 orient z 1 1 0" &
+   "variable px equal ${a}" "variable py equal ${a}*sqrt(2)" "variable pz equal ${a}*sqrt(2)"
+if "${hkl} == 111" then "lattice fcc ${a} orient x 1 -1 0 orient y 1 1 -2 orient z 1 1 1" &
+   "variable px equal ${a}*sqrt(2)" "variable py equal ${a}*sqrt(6)" "variable pz equal ${a}*sqrt(3)"
+variable        lx equal 4*${px}
+variable        ly equal 3*${py}
+variable        th equal 8*${pz}                     # slab thickness
+region          box block 0 ${lx} 0 ${ly} -20 $(v_th+20) units box
+create_box      1 box
+region          slab block INF INF INF INF -0.01 $(v_th-0.01) units box   # fill x,y fully
+create_atoms    1 region slab
+pair_style      eam
+pair_coeff      * * Cu_u3.eam
+minimize        1e-12 1e-12 5000 50000
+variable        gamma equal (pe-atoms*${Ecoh})/(2*lx*ly)*16.0218   # eV/A^2 -> J/m^2
+print           "Surface (${hkl}): gamma = ${gamma} J/m^2  (${hkl} slab, $(atoms) atoms)"
+print           "SURFACE ${hkl} $(v_gamma:%.4f)" append surface_energies.txt screen no
+clear
+next            hkl
+jump            SELF loop
+print           "=== DONE ==="

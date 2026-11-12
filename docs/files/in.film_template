@@ -1,0 +1,131 @@
+# =====================================================================
+# Polycrystalline Cu film on a Cu(111) template, annealed below melting
+# NTRG lab example: same idea as the group's "template" runs (Oct 2026)
+#
+# Layout:  vacuum | 4 columnar grains, 25 Å thick | 3-layer Cu(111) template | vacuum
+# Grains:  (100) (110) (122) (569) facing up (z)
+#
+# Needs:   Cu_u3.eam in the same folder
+# Run:     mpirun -n 8 lmp -in in.film_template -log log.lammps
+# Options (pass with -var NAME VALUE on the command line):
+#   T_hold      anneal temperature in K          (default 1100)
+#   heat_ps     ramp 300 K -> T_hold, ps         (default 100)
+#   hold_ps     hold at T_hold, ps               (default 400)
+#   cool_ps     ramp T_hold -> 300 K, ps         (default 100)
+#   frozen      1 = template frozen, 0 = mobile  (default 1)
+#   vseed       random seed for velocities       (default 482917)
+#   dump_ps     ps between trajectory frames     (default 20)
+# =====================================================================
+
+# ---------- defaults (overridden by -var) ----------
+variable        T_hold  index 1100
+variable        heat_ps index 100
+variable        hold_ps index 400
+variable        cool_ps index 100
+variable        frozen  index 1
+variable        vseed   index 482917
+variable        dump_ps index 20
+
+units           metal
+atom_style      atomic
+boundary        p p f                  # periodic in x,y; free surfaces in z
+
+# ---------- box sized to whole (111) repeats ----------
+variable        a     equal 3.615                  # Cu lattice constant, Å
+variable        nx    equal 12
+variable        ny    equal 7
+variable        lx    equal v_nx*v_a*sqrt(2)       # [1 -1 0] repeat = a*sqrt(2)
+variable        ly    equal v_ny*v_a*sqrt(6)       # [1 1 -2] repeat = a*sqrt(6)
+variable        hx    equal v_lx/2
+variable        hy    equal v_ly/2
+variable        zt    equal 6.0                    # top of template (3 (111) layers)
+variable        zf    equal 31.0                   # top of film (25 Å film)
+
+region          box block 0 ${lx} 0 ${ly} -25 60 units box
+create_box      2 box                              # type 1 = film, type 2 = template
+
+# ---------- template: 3 layers of Cu(111) ----------
+lattice         fcc ${a} orient x 1 -1 0 orient y 1 1 -2 orient z 1 1 1
+region          rtmpl block INF INF INF INF -0.1 ${zt} units box
+create_atoms    2 region rtmpl
+
+# ---------- 4 columnar grains (each orientation set is right-handed) ----------
+# (100) up
+lattice         fcc ${a} orient x 1 0 0 orient y 0 1 0 orient z 0 0 1
+region          g1 block 0 ${hx} 0 ${hy} ${zt} ${zf} units box
+create_atoms    1 region g1
+# (110) up
+lattice         fcc ${a} orient x 0 0 1 orient y 1 -1 0 orient z 1 1 0
+region          g2 block ${hx} ${lx} 0 ${hy} ${zt} ${zf} units box
+create_atoms    1 region g2
+# (122) up
+lattice         fcc ${a} orient x 0 1 -1 orient y -4 1 1 orient z 1 2 2
+region          g3 block 0 ${hx} ${hy} ${ly} ${zt} ${zf} units box
+create_atoms    1 region g3
+# (569) up
+lattice         fcc ${a} orient x 3 -1 -1 orient y 3 32 -23 orient z 5 6 9
+region          g4 block ${hx} ${lx} ${hy} ${ly} ${zt} ${zf} units box
+create_atoms    1 region g4
+
+mass            * 63.546
+pair_style      eam
+pair_coeff      * * Cu_u3.eam
+
+group           film  type 1
+group           tmpl  type 2
+
+# Atoms from neighbouring grains can sit too close together -> delete one of each pair
+delete_atoms    overlap 2.0 film all
+
+# ---------- which atoms move ----------
+if "${frozen} == 1" then &
+   "group mobile subtract all tmpl" &
+   "fix hold tmpl setforce 0.0 0.0 0.0" &
+else &
+   "group mobile union all"
+
+neighbor        2.0 bin
+neigh_modify    every 1 delay 0 check yes
+
+# ---------- relax the as-built grain boundaries ----------
+thermo          100
+minimize        1e-6 1e-8 1000 10000
+reset_timestep  0
+write_data      data.initial
+
+# ---------- outputs (defined AFTER minimize so MSD starts from the relaxed positions) ----------
+compute         tmob mobile temp
+compute         msd  film msd com yes              # c_msd[4] = total MSD (Å^2) -> melting check
+variable        pe_atom equal pe/atoms
+thermo_style    custom step time temp pe v_pe_atom c_msd[4]
+thermo_modify   temp tmob flush yes                # "temp" column = mobile-atom temperature
+thermo          1000
+
+variable        nd equal ${dump_ps}*1000
+dump            d1 all custom ${nd} traj.lammpstrj id type x y z
+dump_modify     d1 sort id
+
+velocity        mobile create 300 ${vseed} mom yes rot yes dist gaussian
+if "${frozen} == 1" then "velocity tmpl set 0.0 0.0 0.0"
+timestep        0.001                              # 1 fs
+
+# ---------- heat -> hold -> cool (NVT: with vacuum, NPT in z is meaningless) ----------
+variable        n_heat equal ${heat_ps}*1000
+fix             int mobile nvt temp 300 ${T_hold} 0.1
+run             ${n_heat}
+unfix           int
+write_data      data.after_heat
+
+variable        n_hold equal ${hold_ps}*1000
+fix             int mobile nvt temp ${T_hold} ${T_hold} 0.1
+run             ${n_hold}
+unfix           int
+write_data      data.after_hold
+
+variable        n_cool equal ${cool_ps}*1000
+fix             int mobile nvt temp ${T_hold} 300 0.1
+run             ${n_cool}
+unfix           int
+write_data      data.final
+
+print           "=== DONE ==="

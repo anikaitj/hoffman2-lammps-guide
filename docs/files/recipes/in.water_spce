@@ -1,0 +1,72 @@
+# =====================================================================
+# SPC/E water: build a box of rigid water molecules, equilibrate at
+# 300 K and 1 atm (NPT), measure density, O-O RDF and diffusion.
+# NTRG lab recipe. Real units (Angstrom, fs, kcal/mol).
+# Needs:  water.mol in the same folder.  Packages: MOLECULE, KSPACE, RIGID
+# Run:    mpirun -n 8 lmp -in in.water_spce -log log.lammps
+# Quick:  -var nmol 216 -var nnpt 2000 -var nprod 2000
+# Expect: density near 1.0 g/cm3 after equilibration (SPC/E: ~0.99-1.0)
+# =====================================================================
+variable        nmol  index 1000           # number of water molecules
+variable        nnpt  index 100000         # NPT equilibration steps (2 fs -> 200 ps)
+variable        nprod index 100000         # NVT production steps
+variable        seed  index 4928459
+
+units           real
+atom_style      full
+boundary        p p p
+
+# box sized for ~1 g/cm3: 29.9 A^3 per molecule
+variable        L equal (v_nmol*29.9)^(1.0/3.0)
+region          box block 0 ${L} 0 ${L} 0 ${L}
+create_box      2 box bond/types 1 angle/types 1 &
+                extra/bond/per/atom 2 extra/angle/per/atom 1 extra/special/per/atom 2
+
+mass            1 15.9994
+mass            2 1.008
+
+pair_style      lj/cut/coul/long 10.0
+pair_coeff      1 1 0.15535 3.166
+pair_coeff      * 2 0.0 1.0
+bond_style      harmonic
+bond_coeff      1 1000.0 1.0
+angle_style     harmonic
+angle_coeff     1 100.0 109.47
+kspace_style    pppm 1.0e-4
+
+molecule        h2o water.mol
+create_atoms    0 random ${nmol} ${seed} NULL mol h2o 7564 overlap 1.33
+
+neighbor        2.0 bin
+neigh_modify    every 1 delay 0 check yes
+
+# rigid geometry (SHAKE) for SPC/E
+fix             rigid all shake 0.0001 20 0 b 1 a 1 mol h2o
+
+# random placement leaves close contacts: relax first
+minimize        1e-4 1e-6 1000 10000
+reset_timestep  0
+
+velocity        all create 300.0 ${seed} mom yes rot yes dist gaussian
+timestep        2.0
+
+variable        dens equal density
+thermo_style    custom step time temp press density pe
+thermo          500
+
+fix             npt all npt temp 300.0 300.0 100.0 iso 1.0 1.0 1000.0
+run             ${nnpt}
+unfix           npt
+
+reset_timestep  0
+fix             nvt all nvt temp 300.0 300.0 100.0
+group           oxy type 1
+compute         rdf all rdf 100 1 1                 # O-O
+fix             rdf all ave/time 100 $(v_nprod/100) ${nprod} c_rdf[*] file rdf_OO.dat mode vector
+compute         msd oxy msd com yes
+fix             msd all ave/time 100 1 100 c_msd[4] file msd_O.dat
+dump            d1 all custom 5000 traj.lammpstrj id mol type q x y z
+run             ${nprod}
+
+print           "Final density: ${dens} g/cm3"
+print           "=== DONE ==="

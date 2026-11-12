@@ -1,0 +1,104 @@
+site_name: NTRG · LAMMPS on Hoffman2
+site_description: How to run LAMMPS molecular dynamics simulations on UCLA's Hoffman2 cluster (NTRG lab guide)
+site_author: Anikait Jain
+site_url: https://anikaitj.github.io/hoffman2-lammps-guide/
+repo_url: https://github.com/anikaitj/hoffman2-lammps-guide
+repo_name: anikaitj/hoffman2-lammps-guide
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  font:
+    text: Inter
+    code: JetBrains Mono
+  palette:
+    - scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-night
+        name: Dark mode
+    - scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-sunny
+        name: Light mode
+  features:
+    - navigation.sections
+    - navigation.footer
+    - navigation.top
+    - navigation.instant
+    - toc.follow
+    - search.highlight
+    - content.code.copy
+    - content.tabs.link
+    - navigation.indexes
+
+extra_css:
+  - stylesheets/extra.css
+
+nav:
+  - Home: index.md
+  - Getting started:
+      - MD basics in plain language: lammps/md-basics.md
+      - Hoffman2 overview: getting-started/hoffman2-overview.md
+      - Set up your laptop: getting-started/laptop-setup.md
+      - Account & login: getting-started/account-and-login.md
+      - Your first simulation: getting-started/first-run.md
+      - Linux basics: getting-started/linux-basics.md
+      - Storage: getting-started/storage.md
+  - LAMMPS:
+      - Getting LAMMPS: lammps/getting-lammps.md
+      - Potentials: lammps/potentials.md
+      - Input scripts: lammps/input-scripts.md
+      - Building structures: lammps/building-structures.md
+  - Simulation recipes:
+      - Pick a recipe: recipes/index.md
+      - Fluids, water, flow, transport: recipes/fluids.md
+      - Polymers: recipes/polymers.md
+      - "Metals: mechanics, surfaces, GBs": recipes/metals.md
+      - More simulation types: recipes/more-types.md
+  - Running jobs:
+      - "Job scripts: Slurm": jobs/slurm.md
+      - "Job scripts: Grid Engine (legacy)": jobs/grid-engine-legacy.md
+      - Interactive sessions: jobs/interactive.md
+      - Submit & monitor: jobs/monitoring.md
+      - Performance & sizing: jobs/performance.md
+      - Restarts & long runs: jobs/restarts-long-runs.md
+      - GPU & multithreaded runs: jobs/gpu.md
+      - Moving files: jobs/moving-files.md
+  - Analysis:
+      - OVITO basics: analysis/ovito.md
+      - Measuring orientation: analysis/orientation.md
+      - Melting checks & thermo plots: analysis/melting-and-thermo.md
+  - Examples:
+      - Cu EAM test (start here): examples/cu-eam-test.md
+      - Film on a (111) template: examples/film-template.md
+      - ReaxFF C/H/O: examples/reaxff-cho.md
+  - Help:
+      - Files & scripts reference: help/files-reference.md
+      - Troubleshooting: help/troubleshooting.md
+      - FAQ: help/faq.md
+      - Glossary: help/glossary.md
+      - References & links: help/references.md
+      - Contributing: help/contributing.md
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - md_in_html
+  - def_list
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.keys
+  - pymdownx.tasklist:
+      custom_checkbox: true
