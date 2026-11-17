@@ -1,6 +1,6 @@
 # Running LAMMPS on Hoffman2
 
-A complete guide for members of UCLA's Nanoelectronics and Terahertz Research Group (NTRG) to running molecular dynamics (MD) simulations in LAMMPS on the Hoffman2 cluster: from getting an account to measuring Cu(111) orientation in OVITO, plus tested recipes for fluids, water, flow, polymers, mechanical tests, surface and grain-boundary energies, and GPU runs.
+A complete guide for members of UCLA's Nano Transport Research Group (NTRG) to running molecular dynamics (MD) simulations in LAMMPS on the Hoffman2 cluster: from getting an account to measuring Cu(111) orientation in OVITO, plus tested recipes for fluids, water, flow, polymers, mechanical tests, surface and grain-boundary energies, and GPU runs.
 
 It's built from the group's own runs (May–Nov 2026), OARC's official Hoffman2 documentation, and the LAMMPS manual. Example inputs and scripts were tested before being added. Anything not yet confirmed is marked ⚠️.
 
